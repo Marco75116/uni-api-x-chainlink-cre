@@ -5,16 +5,13 @@ import "forge-std/Script.sol";
 import "../src/RebalancerVault.sol";
 
 contract DeployRebalancerVault is Script {
-    // Polygon NonfungiblePositionManager
-    address constant POSITION_MANAGER = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
-
     function run() external {
         address pool = vm.envAddress("POOL_ADDRESS");
         address owner = vm.envAddress("OWNER_ADDRESS");
 
         vm.startBroadcast();
 
-        RebalancerVault vault = new RebalancerVault(owner, pool, POSITION_MANAGER);
+        RebalancerVault vault = new RebalancerVault(owner, pool);
 
         vm.stopBroadcast();
 

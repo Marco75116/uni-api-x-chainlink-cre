@@ -9,11 +9,15 @@ import "./interfaces/INonfungiblePositionManager.sol";
 contract RebalancerVault {
     using SafeERC20 for IERC20;
 
+    // Polygon mainnet addresses
+    INonfungiblePositionManager public constant positionManager =
+        INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
+    address public constant universalRouter = 0x1095692A6237d83C6a72F3F5eFEdb9A670C49223;
+
     address public owner;
     address public operator;
 
     IUniswapV3Pool public immutable pool;
-    INonfungiblePositionManager public immutable positionManager;
     IERC20 public immutable token0;
     IERC20 public immutable token1;
     uint256 public tokenId; // The NFT position owned by this vault
@@ -37,21 +41,23 @@ contract RebalancerVault {
         _;
     }
 
-    constructor(
-        address _owner,
-        address _pool,
-        address _positionManager
-    ) {
+    constructor(address _owner, address _pool) {
         if (_owner == address(0)) revert ZeroAddress();
         if (_pool == address(0)) revert ZeroAddress();
-        if (_positionManager == address(0)) revert ZeroAddress();
 
         owner = _owner;
         operator = msg.sender;
         pool = IUniswapV3Pool(_pool);
-        positionManager = INonfungiblePositionManager(_positionManager);
         token0 = IERC20(IUniswapV3Pool(_pool).token0());
         token1 = IERC20(IUniswapV3Pool(_pool).token1());
+
+        // Approve Universal Router to spend both pool tokens (for swaps via Trading API)
+        IERC20(IUniswapV3Pool(_pool).token0()).approve(universalRouter, type(uint256).max);
+        IERC20(IUniswapV3Pool(_pool).token1()).approve(universalRouter, type(uint256).max);
+
+        // Approve NonfungiblePositionManager to spend both tokens (for minting positions)
+        IERC20(IUniswapV3Pool(_pool).token0()).approve(address(positionManager), type(uint256).max);
+        IERC20(IUniswapV3Pool(_pool).token1()).approve(address(positionManager), type(uint256).max);
     }
 
     // ########## Admin Functions ##########

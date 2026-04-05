@@ -11,6 +11,7 @@ contract RebalancerVaultTest is Test {
     // Polygon mainnet addresses
     address constant POOL = 0x254aa3A898071D6A2dA0DB11dA73b02B4646078F; // DAI/USDT0 0.01%
     address constant POSITION_MANAGER = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
+    address constant UNIVERSAL_ROUTER = 0x1095692A6237d83C6a72F3F5eFEdb9A670C49223; // Uniswap Universal Router on Polygon
     address constant DAI = 0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063;
     address constant USDT0 = 0xc2132D05D31c914a87C6611C10748AEb04B58e8F;
 
@@ -26,7 +27,7 @@ contract RebalancerVaultTest is Test {
         owner = makeAddr("owner");
         operator = address(this); // test contract is the deployer, so becomes operator
 
-        vault = new RebalancerVault(owner, POOL, POSITION_MANAGER);
+        vault = new RebalancerVault(owner, POOL);
     }
 
     // ───────── Constructor Tests ─────────
@@ -36,21 +37,26 @@ contract RebalancerVaultTest is Test {
         assertEq(vault.operator(), address(this));
         assertEq(address(vault.pool()), POOL);
         assertEq(address(vault.positionManager()), POSITION_MANAGER);
+        assertEq(vault.universalRouter(), UNIVERSAL_ROUTER);
     }
 
     function test_constructor_revertsOnZeroOwner() public {
         vm.expectRevert(RebalancerVault.ZeroAddress.selector);
-        new RebalancerVault(address(0), POOL, POSITION_MANAGER);
+        new RebalancerVault(address(0), POOL);
     }
 
     function test_constructor_revertsOnZeroPool() public {
         vm.expectRevert(RebalancerVault.ZeroAddress.selector);
-        new RebalancerVault(owner, address(0), POSITION_MANAGER);
+        new RebalancerVault(owner, address(0));
     }
 
-    function test_constructor_revertsOnZeroPositionManager() public {
-        vm.expectRevert(RebalancerVault.ZeroAddress.selector);
-        new RebalancerVault(owner, POOL, address(0));
+    function test_constructor_setsApprovals() public view {
+        // Check Universal Router approvals
+        assertEq(IERC20Minimal(DAI).allowance(address(vault), UNIVERSAL_ROUTER), type(uint256).max);
+        assertEq(IERC20Minimal(USDT0).allowance(address(vault), UNIVERSAL_ROUTER), type(uint256).max);
+        // Check Position Manager approvals
+        assertEq(IERC20Minimal(DAI).allowance(address(vault), POSITION_MANAGER), type(uint256).max);
+        assertEq(IERC20Minimal(USDT0).allowance(address(vault), POSITION_MANAGER), type(uint256).max);
     }
 
     // ───────── Access Control Tests ─────────
@@ -136,7 +142,7 @@ contract RebalancerVaultTest is Test {
 
         // Set tokenId on vault (needs a setter or we set storage directly)
         // Since there's no public setter, use vm.store
-        // tokenId is at storage slot 4 (owner=0, operator=1, pool=2, positionManager=3, tokenId=4)
+        // tokenId is at storage slot 2 (owner=0, operator=1, tokenId=2; immutables/constants don't use storage)
         vm.store(address(vault), bytes32(uint256(2)), bytes32(tokenId));
 
         // Query position
