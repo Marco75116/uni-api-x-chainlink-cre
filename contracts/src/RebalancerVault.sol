@@ -24,12 +24,20 @@ contract RebalancerVault {
 
     event Deposited(address indexed token, uint256 amount);
     event Withdrawn(address indexed token, address indexed to, uint256 amount);
+    event Rebalanced(
+        uint256 oldTokenId,
+        uint256 newTokenId,
+        int24 newTickLower,
+        int24 newTickUpper,
+        uint128 newLiquidity
+    );
 
     error NotOwner();
     error NotOperator();
     error ZeroAddress();
     error ZeroAmount();
     error InvalidToken();
+    error SwapFailed();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -100,6 +108,83 @@ contract RebalancerVault {
         bytes calldata
     ) external pure returns (bytes4) {
         return this.onERC721Received.selector;
+    }
+
+    // ########## Rebalance ##########
+
+    /// @notice Rebalance the LP position: withdraw old, swap, mint centered on current tick
+    /// @param swapData Calldata from Uniswap Trading API to execute via Universal Router
+    function rebalance(bytes calldata swapData) external onlyOperator {
+        uint256 oldTokenId = tokenId;
+
+        // Get old position's tick range to compute width
+        (, , , , , int24 tickLower, int24 tickUpper, uint128 liquidity, , , , ) =
+            positionManager.positions(oldTokenId);
+
+        // Step 1: Withdraw all liquidity + collect fees
+        if (liquidity > 0) {
+            positionManager.decreaseLiquidity(
+                INonfungiblePositionManager.DecreaseLiquidityParams({
+                    tokenId: oldTokenId,
+                    liquidity: liquidity,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    deadline: block.timestamp
+                })
+            );
+        }
+
+        positionManager.collect(
+            INonfungiblePositionManager.CollectParams({
+                tokenId: oldTokenId,
+                recipient: address(this),
+                amount0Max: type(uint128).max,
+                amount1Max: type(uint128).max
+            })
+        );
+
+        // Step 2: Execute swap via Universal Router using Trading API calldata
+        if (swapData.length > 0) {
+            (bool success, ) = universalRouter.call(swapData);
+            if (!success) revert SwapFailed();
+        }
+
+        // Step 3: Compute centered tick range and mint new position
+        (, int24 currentTick, , , , , ) = pool.slot0();
+        int24 tickSpacing = pool.tickSpacing();
+        int24 halfWidth = (tickUpper - tickLower) / 2;
+
+        int24 newTickLower = ((currentTick - halfWidth) / tickSpacing) * tickSpacing;
+        int24 newTickUpper = ((currentTick + halfWidth) / tickSpacing) * tickSpacing;
+
+        uint256 balance0 = token0.balanceOf(address(this));
+        uint256 balance1 = token1.balanceOf(address(this));
+
+        (uint256 newTokenId, uint128 newLiquidity, , ) = positionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                token0: address(token0),
+                token1: address(token1),
+                fee: pool.fee(),
+                tickLower: newTickLower,
+                tickUpper: newTickUpper,
+                amount0Desired: balance0,
+                amount1Desired: balance1,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: block.timestamp
+            })
+        );
+
+        tokenId = newTokenId;
+
+        emit Rebalanced(
+            oldTokenId,
+            newTokenId,
+            newTickLower,
+            newTickUpper,
+            newLiquidity
+        );
     }
 
     // ########## View Functions ##########
