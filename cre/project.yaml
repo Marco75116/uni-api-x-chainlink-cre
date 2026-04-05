@@ -33,12 +33,12 @@
 # ==========================================================================
 staging-settings:
   rpcs:
-    - chain-name: ethereum-testnet-sepolia
-      url: https://ethereum-sepolia-rpc.publicnode.com
+    - chain-name: polygon-mainnet
+      url: https://polygon-bor-rpc.publicnode.com
 
 # ==========================================================================
 production-settings:
   rpcs:
-    - chain-name: ethereum-testnet-sepolia
-      url: https://ethereum-sepolia-rpc.publicnode.com
+    - chain-name: polygon-mainnet
+      url: https://polygon-bor-rpc.publicnode.com
 
