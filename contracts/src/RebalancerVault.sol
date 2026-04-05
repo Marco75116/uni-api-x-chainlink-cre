@@ -110,6 +110,36 @@ contract RebalancerVault {
         return this.onERC721Received.selector;
     }
 
+    /// @notice Remove all liquidity from the current position and collect all fees
+    /// @return amount0 Total token0 received (liquidity + fees)
+    /// @return amount1 Total token1 received (liquidity + fees)
+    function removeLiquidityAndCollectFees() external onlyOwner returns (uint256 amount0, uint256 amount1) {
+        uint256 currentTokenId = tokenId;
+
+        (, , , , , , , uint128 liquidity, , , , ) = positionManager.positions(currentTokenId);
+
+        if (liquidity > 0) {
+            positionManager.decreaseLiquidity(
+                INonfungiblePositionManager.DecreaseLiquidityParams({
+                    tokenId: currentTokenId,
+                    liquidity: liquidity,
+                    amount0Min: 0,
+                    amount1Min: 0,
+                    deadline: block.timestamp
+                })
+            );
+        }
+
+        (amount0, amount1) = positionManager.collect(
+            INonfungiblePositionManager.CollectParams({
+                tokenId: currentTokenId,
+                recipient: address(this),
+                amount0Max: type(uint128).max,
+                amount1Max: type(uint128).max
+            })
+        );
+    }
+
     // ########## Rebalance ##########
 
     /// @notice Rebalance the LP position: withdraw old, swap, mint centered on current tick
