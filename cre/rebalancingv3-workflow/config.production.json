@@ -1,3 +1,4 @@
 {
-  "schedule": "*/30 * * * * *"
+  "poolAddress": "0x254aa3A898071D6A2dA0DB11dA73b02B4646078F",
+  "chainSelector": "polygon-mainnet"
 }
