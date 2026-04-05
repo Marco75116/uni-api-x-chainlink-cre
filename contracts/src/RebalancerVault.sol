@@ -2,14 +2,19 @@
 pragma solidity ^0.8.13;
 
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
+import "@uniswap/v3-core/contracts/interfaces/IERC20Minimal.sol";
 import "./interfaces/INonfungiblePositionManager.sol";
 
 contract RebalancerVault {
+    // Polygon mainnet addresses
+    INonfungiblePositionManager public constant positionManager =
+        INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
+    address public constant universalRouter = 0x1095692A6237d83C6a72F3F5eFEdb9A670C49223;
+
     address public owner;
     address public operator;
 
     IUniswapV3Pool public pool;
-    INonfungiblePositionManager public positionManager;
     uint256 public tokenId; // The NFT position owned by this vault
 
     error NotOwner();
@@ -26,19 +31,23 @@ contract RebalancerVault {
         _;
     }
 
-    constructor(
-        address _owner,
-        address _pool,
-        address _positionManager
-    ) {
+    constructor(address _owner, address _pool) {
         if (_owner == address(0)) revert ZeroAddress();
         if (_pool == address(0)) revert ZeroAddress();
-        if (_positionManager == address(0)) revert ZeroAddress();
 
         owner = _owner;
         operator = msg.sender;
         pool = IUniswapV3Pool(_pool);
-        positionManager = INonfungiblePositionManager(_positionManager);
+
+        // Approve Universal Router to spend both pool tokens (for swaps via Trading API)
+        address token0 = IUniswapV3Pool(_pool).token0();
+        address token1 = IUniswapV3Pool(_pool).token1();
+        IERC20Minimal(token0).approve(universalRouter, type(uint256).max);
+        IERC20Minimal(token1).approve(universalRouter, type(uint256).max);
+
+        // Approve NonfungiblePositionManager to spend both tokens (for minting positions)
+        IERC20Minimal(token0).approve(address(positionManager), type(uint256).max);
+        IERC20Minimal(token1).approve(address(positionManager), type(uint256).max);
     }
 
     // ########## Admin Functions ##########
