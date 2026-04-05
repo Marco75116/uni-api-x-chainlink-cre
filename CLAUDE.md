@@ -7,6 +7,19 @@ Build automation on the Uniswap protocol using the Chainlink Runtime Environment
 - **Chainlink CRE**: Used to create workflows that automate on-chain actions. Docs: https://docs.chain.link/cre
 - **Uniswap Trading API**: Used to execute token swaps programmatically. Docs: https://api-docs.uniswap.org/introduction
 
+## Monorepo Structure
+
+```
+macau/
+├── contracts/    ← Foundry project (ERC-4337 smart account, rebalancer logic)
+├── cre/          ← CRE workflow code (TypeScript/Go)
+├── CLAUDE.md
+└── README.md
+```
+
+- `contracts/`: Solidity smart contracts built with Foundry. Contains the ERC-4337 smart account that owns the LP position and executes atomic rebalances.
+- `cre/`: Chainlink CRE workflow that monitors pool ticks and triggers rebalances.
+
 ## Implementation: Automated LP Rebalancing via ERC-4337 Smart Account
 
 ### Overview
