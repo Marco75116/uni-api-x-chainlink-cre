@@ -142,8 +142,8 @@ contract RebalancerVaultTest is Test {
 
         // Set tokenId on vault (needs a setter or we set storage directly)
         // Since there's no public setter, use vm.store
-        // tokenId is at storage slot 3 (owner=0, operator=1, pool=2, tokenId=3; constants don't use storage)
-        vm.store(address(vault), bytes32(uint256(3)), bytes32(tokenId));
+        // tokenId is at storage slot 2 (owner=0, operator=1, tokenId=2; immutables/constants don't use storage)
+        vm.store(address(vault), bytes32(uint256(2)), bytes32(tokenId));
 
         // Query position
         (
@@ -218,7 +218,7 @@ contract RebalancerVaultTest is Test {
             address(this), address(vault), tokenId
         );
 
-        vm.store(address(vault), bytes32(uint256(3)), bytes32(tokenId));
+        vm.store(address(vault), bytes32(uint256(2)), bytes32(tokenId));
     }
 
     /// @notice Required for ERC721 safeTransferFrom to work when this contract is the sender

@@ -2,10 +2,13 @@
 pragma solidity ^0.8.13;
 
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
-import "@uniswap/v3-core/contracts/interfaces/IERC20Minimal.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./interfaces/INonfungiblePositionManager.sol";
 
 contract RebalancerVault {
+    using SafeERC20 for IERC20;
+
     // Polygon mainnet addresses
     INonfungiblePositionManager public constant positionManager =
         INonfungiblePositionManager(0xC36442b4a4522E871399CD717aBDD847Ab11FE88);
@@ -14,12 +17,19 @@ contract RebalancerVault {
     address public owner;
     address public operator;
 
-    IUniswapV3Pool public pool;
+    IUniswapV3Pool public immutable pool;
+    IERC20 public immutable token0;
+    IERC20 public immutable token1;
     uint256 public tokenId; // The NFT position owned by this vault
+
+    event Deposited(address indexed token, uint256 amount);
+    event Withdrawn(address indexed token, address indexed to, uint256 amount);
 
     error NotOwner();
     error NotOperator();
     error ZeroAddress();
+    error ZeroAmount();
+    error InvalidToken();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -38,16 +48,16 @@ contract RebalancerVault {
         owner = _owner;
         operator = msg.sender;
         pool = IUniswapV3Pool(_pool);
+        token0 = IERC20(IUniswapV3Pool(_pool).token0());
+        token1 = IERC20(IUniswapV3Pool(_pool).token1());
 
         // Approve Universal Router to spend both pool tokens (for swaps via Trading API)
-        address token0 = IUniswapV3Pool(_pool).token0();
-        address token1 = IUniswapV3Pool(_pool).token1();
-        IERC20Minimal(token0).approve(universalRouter, type(uint256).max);
-        IERC20Minimal(token1).approve(universalRouter, type(uint256).max);
+        IERC20(IUniswapV3Pool(_pool).token0()).approve(universalRouter, type(uint256).max);
+        IERC20(IUniswapV3Pool(_pool).token1()).approve(universalRouter, type(uint256).max);
 
         // Approve NonfungiblePositionManager to spend both tokens (for minting positions)
-        IERC20Minimal(token0).approve(address(positionManager), type(uint256).max);
-        IERC20Minimal(token1).approve(address(positionManager), type(uint256).max);
+        IERC20(IUniswapV3Pool(_pool).token0()).approve(address(positionManager), type(uint256).max);
+        IERC20(IUniswapV3Pool(_pool).token1()).approve(address(positionManager), type(uint256).max);
     }
 
     // ########## Admin Functions ##########
@@ -56,6 +66,30 @@ contract RebalancerVault {
     function setOperator(address _operator) external onlyOwner {
         if (_operator == address(0)) revert ZeroAddress();
         operator = _operator;
+    }
+
+    /// @notice Deposit token0 or token1 into the vault
+    /// @param token Address of the token to deposit (must be pool's token0 or token1)
+    /// @param amount Amount of tokens to deposit
+    function deposit(address token, uint256 amount) external onlyOwner {
+        if (amount == 0) revert ZeroAmount();
+        if (token != address(token0) && token != address(token1)) revert InvalidToken();
+
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+
+        emit Deposited(token, amount);
+    }
+
+    /// @notice Withdraw token0 or token1 from the vault
+    /// @param token Address of the token to withdraw (must be pool's token0 or token1)
+    /// @param amount Amount of tokens to withdraw
+    function withdraw(address token, uint256 amount) external onlyOwner {
+        if (amount == 0) revert ZeroAmount();
+        if (token != address(token0) && token != address(token1)) revert InvalidToken();
+
+        IERC20(token).safeTransfer(msg.sender, amount);
+
+        emit Withdrawn(token, msg.sender, amount);
     }
 
     /// @notice ERC721 receiver so the vault can receive NFT positions
@@ -89,8 +123,8 @@ contract RebalancerVault {
         external
         view
         returns (
-            address token0,
-            address token1,
+            address _token0,
+            address _token1,
             uint24 fee,
             int24 tickLower,
             int24 tickUpper,
@@ -100,8 +134,8 @@ contract RebalancerVault {
         (
             ,
             ,
-            token0,
-            token1,
+            _token0,
+            _token1,
             fee,
             tickLower,
             tickUpper,
