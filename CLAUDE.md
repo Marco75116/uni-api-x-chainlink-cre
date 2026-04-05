@@ -10,21 +10,21 @@ Build automation on the Uniswap protocol using the Chainlink Runtime Environment
 ## Monorepo Structure
 
 ```
-macau/
-├── contracts/    ← Foundry project (ERC-4337 smart account, rebalancer logic)
+warsaw-v1/
+├── contracts/    ← Foundry project (RebalancerVault, LP rebalancing logic)
 ├── cre/          ← CRE workflow code (TypeScript/Go)
 ├── CLAUDE.md
 └── README.md
 ```
 
-- `contracts/`: Solidity smart contracts built with Foundry. Contains the ERC-4337 smart account that owns the LP position and executes atomic rebalances.
+- `contracts/`: Solidity smart contracts built with Foundry. Contains the RebalancerVault that owns the LP position and executes atomic rebalances.
 - `cre/`: Chainlink CRE workflow that monitors pool ticks and triggers rebalances.
 
-## Implementation: Automated LP Rebalancing via ERC-4337 Smart Account
+## Implementation: Automated LP Rebalancing via RebalancerVault
 
 ### Overview
 
-Automated concentrated liquidity rebalancing for Uniswap V3 positions, using a CRE workflow as the brain and an ERC-4337 smart account as the executor.
+Automated concentrated liquidity rebalancing for Uniswap V3 positions, using a CRE workflow as the brain and a simple vault contract as the executor. No ERC-4337 needed — the CRE workflow sends a regular transaction from an operator EOA.
 
 ### Architecture
 
@@ -42,9 +42,9 @@ Automated concentrated liquidity rebalancing for Uniswap V3 positions, using a C
 │  └─ The calldata encodes Universal Router execute()     │
 │      (multi-hop, split routes, multiple pools)          │
 │                                                         │
-│  STEP 2: Send to Smart Account                          │
-│  ├─ Input: swap TransactionRequest object               │
-│  └─ Smart account executes atomically:                  │
+│  STEP 2: Send tx to RebalancerVault.rebalance()         │
+│  ├─ Input: swap calldata, new tick range                │
+│  └─ Vault executes atomically:                          │
 │      1. Withdraw liquidity from current position        │
 │      2. Collect accrued fees                            │
 │      3. Execute the swap (from API calldata)            │
@@ -54,17 +54,22 @@ Automated concentrated liquidity rebalancing for Uniswap V3 positions, using a C
 
 ### Components
 
-1. **ERC-4337 Smart Account** — Owns the Uniswap V3 LP position. Executes the full rebalance atomically in a single UserOperation (withdraw → swap → mint). Enables gasless execution via a Paymaster.
+1. **RebalancerVault** — Owns the Uniswap V3 LP NFT position. Has two roles:
+   - **owner**: Full admin (can withdraw funds, change operator, emergency actions)
+   - **operator**: The CRE workflow's EOA address, authorized to call `rebalance()`
 
-2. **CRE Workflow** — Triggered by on-chain Swap events on the pool. Reads the current tick, checks if the position is out of range, calls the Uniswap Trading API to build the swap calldata, and sends the rebalance instruction to the smart account.
+   Executes the full rebalance atomically in a single transaction (withdraw → swap → mint).
 
-3. **Uniswap Trading API** — Called by CRE to get the optimal swap route. Returns a `TransactionRequest` with pre-encoded calldata (paths, pools, amounts) that the smart account forwards to the Universal Router.
+2. **CRE Workflow** — Triggered by on-chain Swap events on the pool. Reads the current tick, checks if the position is out of range, calls the Uniswap Trading API to build the swap calldata, and sends the rebalance instruction to the vault.
+
+3. **Uniswap Trading API** — Called by CRE to get the optimal swap route. Returns a `TransactionRequest` with pre-encoded calldata (paths, pools, amounts) that the vault forwards to the Universal Router.
 
 ### Key Design Decisions
 
-- **Why ERC-4337**: Atomic multi-step execution (withdraw + swap + mint in one tx), gas sponsorship via Paymaster, no EOA key management in CRE.
+- **Why a simple vault instead of ERC-4337**: The CRE workflow can sign and send transactions via an operator EOA. A simple contract with `onlyOperator` access control achieves the same atomicity without the complexity of UserOperations, bundlers, and EntryPoint.
+- **Why owner + operator roles**: The owner retains full control (withdraw, change operator). The operator (CRE) can only call `rebalance()` — minimizing risk if the operator key is compromised.
 - **Why trigger on Swap events**: Every swap moves the tick — checking on each swap tells us immediately when our position goes out of range.
-- **Why use the Trading API for swap calldata**: The API handles routing optimization (multi-hop, split routes, fee tier selection) so the smart account contract stays simple.
+- **Why use the Trading API for swap calldata**: The API handles routing optimization (multi-hop, split routes, fee tier selection) so the vault contract stays simple.
 
 ## Skills
 
